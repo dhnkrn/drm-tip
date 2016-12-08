@@ -225,6 +225,7 @@ void drm_mode_config_reset(struct drm_device *dev)
 	drm_for_each_connector(connector, dev)
 		if (connector->funcs->reset)
 			connector->funcs->reset(connector);
+
 	mutex_unlock(&dev->mode_config.mutex);
 }
 EXPORT_SYMBOL(drm_mode_config_reset);

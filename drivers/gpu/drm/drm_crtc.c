@@ -332,6 +332,7 @@ int drm_mode_getcrtc(struct drm_device *dev,
 	struct drm_mode_crtc *crtc_resp = data;
 	struct drm_crtc *crtc;
 
+	DRM_ERROR("\n");
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
 
@@ -494,6 +495,7 @@ int drm_mode_setcrtc(struct drm_device *dev, void *data,
 	int ret;
 	int i;
 
+	DRM_ERROR("\n");
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
 

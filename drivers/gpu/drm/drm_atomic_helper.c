@@ -31,6 +31,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <linux/dma-fence.h>
+#include <drm/drm_dp_mst_helper.h>
 
 #include "drm_crtc_internal.h"
 
@@ -2009,6 +2010,7 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 	struct drm_plane_state *plane_state;
 	struct drm_crtc_commit *commit;
 
+	DRM_ERROR("\n");
 	if (stall) {
 		for_each_crtc_in_state(state, crtc, crtc_state, i) {
 			spin_lock(&crtc->commit_lock);
@@ -2034,6 +2036,25 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 		connector->state->state = state;
 		swap(state->connectors[i].state, connector->state);
 		connector->state->state = NULL;
+	}
+
+	for (i = 0; i < state->num_mst_topologies; i++) {
+		struct drm_dp_mst_topology_mgr *mgr;
+
+		if (!state->dp_mst_topologies[i].ptr) {
+			DRM_ERROR("BUG, no mgr in state\n");
+		}
+
+		if (!state->dp_mst_topologies[i].state) {
+			DRM_ERROR("BUG, no mgr state in state\n");
+			continue;
+		}
+
+		mgr = state->dp_mst_topologies[i].ptr;
+
+		mgr->state->state = state;
+		swap(state->dp_mst_topologies[i].state, mgr->state);
+		mgr->state->state = NULL;
 	}
 
 	for_each_crtc_in_state(state, crtc, crtc_state, i) {
@@ -3260,6 +3281,8 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 	struct drm_crtc *crtc;
 	int err = 0;
 
+	DRM_ERROR("\n");
+
 	state = drm_atomic_state_alloc(dev);
 	if (!state)
 		return ERR_PTR(-ENOMEM);
@@ -3295,6 +3318,7 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 			goto free;
 		}
 	}
+
 
 	/* clear the acquire context so that it isn't accidentally reused */
 	state->acquire_ctx = NULL;

@@ -1067,6 +1067,7 @@ int drm_mode_getconnector(struct drm_device *dev, void *data,
 	struct drm_mode_modeinfo __user *mode_ptr;
 	uint32_t __user *encoder_ptr;
 
+	DRM_ERROR("\n");
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
 

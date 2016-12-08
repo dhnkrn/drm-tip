@@ -2044,7 +2044,7 @@ int drm_dp_mst_topology_mgr_set_mst(struct drm_dp_mst_topology_mgr *mgr, bool ms
 
 		mgr->total_pbn = 2560;
 		mgr->total_slots = DIV_ROUND_UP(mgr->total_pbn, mgr->pbn_div);
-		mgr->avail_slots = mgr->total_slots;
+		mgr->state->avail_slots = mgr->total_slots;
 
 		/* add initial branch device at LCT 1 */
 		mstb = drm_dp_add_mst_branch_device(1, NULL);
@@ -2475,7 +2475,7 @@ int drm_dp_find_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr,
 
 	num_slots = DIV_ROUND_UP(pbn, mgr->pbn_div);
 
-	if (num_slots > mgr->avail_slots)
+	if (num_slots > mgr->state->avail_slots)
 		return -ENOSPC;
 	return num_slots;
 }
@@ -2489,7 +2489,7 @@ static int drm_dp_init_vcpi(struct drm_dp_mst_topology_mgr *mgr,
 
 	num_slots = DIV_ROUND_UP(pbn, mgr->pbn_div);
 
-	if (num_slots > mgr->avail_slots)
+	if (num_slots > mgr->state->avail_slots)
 		return -ENOSPC;
 
 	vcpi->pbn = pbn;
@@ -2528,7 +2528,7 @@ bool drm_dp_mst_allocate_vcpi(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp
 
 	ret = drm_dp_init_vcpi(mgr, &port->vcpi, pbn);
 	if (ret) {
-		DRM_DEBUG_KMS("failed to init vcpi %d %d %d\n", DIV_ROUND_UP(pbn, mgr->pbn_div), mgr->avail_slots, ret);
+		DRM_DEBUG_KMS("failed to init vcpi %d %d %d\n", DIV_ROUND_UP(pbn, mgr->pbn_div), mgr->state->avail_slots, ret);
 		goto out;
 	}
 	DRM_DEBUG_KMS("initing vcpi for %d %d\n", pbn, port->vcpi.num_slots);
@@ -2977,10 +2977,13 @@ int drm_dp_mst_topology_mgr_init(struct drm_dp_mst_topology_mgr *mgr,
 	mgr->proposed_vcpis = kcalloc(max_payloads, sizeof(struct drm_dp_vcpi *), GFP_KERNEL);
 	if (!mgr->proposed_vcpis)
 		return -ENOMEM;
+	mgr->state = kzalloc(sizeof(struct drm_dp_mst_topology_state), GFP_KERNEL);
+	if (!mgr->state)
+		return -ENOMEM;
+
 	set_bit(0, &mgr->payload_mask);
 	if (test_calc_pbn_mode() < 0)
 		DRM_ERROR("MST PBN self-test failed\n");
-
 	return 0;
 }
 EXPORT_SYMBOL(drm_dp_mst_topology_mgr_init);
@@ -2999,6 +3002,8 @@ void drm_dp_mst_topology_mgr_destroy(struct drm_dp_mst_topology_mgr *mgr)
 	kfree(mgr->proposed_vcpis);
 	mgr->proposed_vcpis = NULL;
 	mutex_unlock(&mgr->payload_lock);
+	kfree(mgr->state);
+	mgr->state = NULL;
 	mgr->dev = NULL;
 	mgr->aux = NULL;
 }
