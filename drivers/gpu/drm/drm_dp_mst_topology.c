@@ -2474,8 +2474,10 @@ int drm_dp_find_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr,
 	int num_slots;
 
 	num_slots = DIV_ROUND_UP(pbn, mgr->pbn_div);
-
-	if (num_slots > mgr->state->avail_slots)
+	
+	/* change this to check against max_slots*/
+	
+	if (num_slots > mgr->total_slots)
 		return -ENOSPC;
 	return num_slots;
 }
@@ -2488,9 +2490,6 @@ static int drm_dp_init_vcpi(struct drm_dp_mst_topology_mgr *mgr,
 	int ret;
 
 	num_slots = DIV_ROUND_UP(pbn, mgr->pbn_div);
-
-	if (num_slots > mgr->state->avail_slots)
-		return -ENOSPC;
 
 	vcpi->pbn = pbn;
 	vcpi->aligned_pbn = num_slots * mgr->pbn_div;
@@ -2526,6 +2525,9 @@ bool drm_dp_mst_allocate_vcpi(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp
 		}
 	}
 
+	if (drm_dp_find_vcpi_slots(mgr, pbn) < 0)
+		goto out;
+
 	ret = drm_dp_init_vcpi(mgr, &port->vcpi, pbn);
 	if (ret) {
 		DRM_DEBUG_KMS("failed to init vcpi %d %d %d\n", DIV_ROUND_UP(pbn, mgr->pbn_div), mgr->state->avail_slots, ret);
@@ -2541,6 +2543,21 @@ out:
 }
 EXPORT_SYMBOL(drm_dp_mst_allocate_vcpi);
 
+int drm_dp_atomic_find_vcpi_slots(struct drm_dp_mst_topology_state *topology_state,
+				struct drm_dp_mst_port *port, int pbn)
+{
+	int num_slots, curr_alloc;
+	struct drm_dp_mst_topology_mgr *mgr = topology_state->mgr;
+	num_slots = DIV_ROUND_UP(pbn, mgr->pbn_div);
+	curr_alloc = drm_dp_mst_get_vcpi_slots(mgr, port);
+
+	if (num_slots - curr_alloc > topology_state->avail_slots)
+		return -ENOSPC;
+
+	topology_state->avail_slots -= (num_slots - curr_alloc);
+	return num_slots;
+}
+EXPORT_SYMBOL(drm_dp_atomic_find_vcpi_slots);
 int drm_dp_mst_get_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_port *port)
 {
 	int slots = 0;
@@ -2980,6 +2997,7 @@ int drm_dp_mst_topology_mgr_init(struct drm_dp_mst_topology_mgr *mgr,
 	mgr->state = kzalloc(sizeof(struct drm_dp_mst_topology_state), GFP_KERNEL);
 	if (!mgr->state)
 		return -ENOMEM;
+	mgr->state->mgr = mgr;
 
 	set_bit(0, &mgr->payload_mask);
 	if (test_calc_pbn_mode() < 0)

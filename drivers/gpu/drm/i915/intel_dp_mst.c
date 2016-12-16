@@ -66,10 +66,14 @@ static bool intel_dp_mst_compute_config(struct intel_encoder *encoder,
 	mst_pbn = drm_dp_calc_pbn_mode(adjusted_mode->crtc_clock, bpp);
 
 	pipe_config->pbn = mst_pbn;
-	slots = drm_dp_find_vcpi_slots(&intel_dp->mst_mgr, mst_pbn);
+//	slots = drm_dp_find_vcpi_slots(&intel_dp->mst_mgr, mst_pbn);
 
 	topology_state = drm_atomic_get_mst_topology_state(state, &intel_dp->mst_mgr);
-//	slots = drm_atomic_allocate_vcpi_slots(topology_state, mst_pbn);
+	slots = drm_dp_atomic_find_vcpi_slots(topology_state, connector->port, mst_pbn);
+	if (slots < 0) {
+		DRM_DEBUG_KMS("not enough bandwidth for this mode\n");
+		return false;
+	}
 
 	intel_link_compute_m_n(bpp, lane_count,
 			       adjusted_mode->crtc_clock,
@@ -152,7 +156,6 @@ static void intel_mst_pre_enable_dp(struct intel_encoder *encoder,
 	int ret;
 	uint32_t temp;
 	int slots;
-
 	/* MST encoders are bound to a crtc, not to a connector,
 	 * force the mapping here for get_hw_state.
 	 */

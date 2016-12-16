@@ -1057,6 +1057,7 @@ struct drm_dp_mst_topology_state *drm_atomic_get_mst_topology_state(struct drm_a
 	state->dp_mst_topologies[state->num_mst_topologies].state = new_mst_state;
 	state->dp_mst_topologies[state->num_mst_topologies].ptr = mgr;
 	state->num_mst_topologies = num_topologies;
+	new_mst_state->mgr = mgr;
 	mgr->state->state = state;
 
 	DRM_DEBUG_ATOMIC("Added [MST Topology w/ base connector:%d] %p state to %p\n",
