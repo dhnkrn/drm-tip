@@ -836,6 +836,19 @@ struct drm_connector_helper_funcs {
 	 */
 	struct drm_encoder *(*atomic_best_encoder)(struct drm_connector *connector,
 						   struct drm_connector_state *connector_state);
+
+	/**
+	 * @atomic_release:
+	 *
+	 * This function is used to release shared resources that were
+	 * previously acquired.
+	 *
+	 * NOTE:
+	 *
+	 * This function is called in the check phase of an atomic update.
+	 */
+	void (*atomic_release)(struct drm_connector *connector,
+			       struct drm_connector_state *connector_state);
 };
 
 /**
