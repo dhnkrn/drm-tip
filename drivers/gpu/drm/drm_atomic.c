@@ -1011,10 +1011,14 @@ drm_atomic_get_private_obj_state(struct drm_atomic_state *state, void *obj,
 	size_t size;
 	struct __drm_private_objs_state *arr;
 
-	for (i = 0; i < state->num_private_objs; i++)
+	for (i = 0; i < state->num_private_objs; i++) {
+		DRM_ERROR("should be returning existing state\n");
 		if (obj == state->private_objs[i].obj &&
-		    state->private_objs[i].obj_state)
+		    state->private_objs[i].obj_state) {
+			DRM_ERROR("returning existing state\n");
 			return state->private_objs[i].obj_state;
+		}
+	}
 
 	num_objs = state->num_private_objs + 1;
 	size = sizeof(*state->private_objs) * num_objs;
@@ -1030,6 +1034,7 @@ drm_atomic_get_private_obj_state(struct drm_atomic_state *state, void *obj,
 	if (!state->private_objs[index].obj_state)
 		return ERR_PTR(-ENOMEM);
 
+	DRM_ERROR("duplicated state and added to atomic state\n");
 	state->private_objs[index].obj = obj;
 	state->private_objs[index].funcs = funcs;
 	state->num_private_objs = num_objs;

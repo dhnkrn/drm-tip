@@ -3121,7 +3121,9 @@ int drm_dp_mst_topology_mgr_init(struct drm_dp_mst_topology_mgr *mgr,
 
 	/* max. time slots - one slot for MTP header */
 	mgr->state->avail_slots = 63;
+	DRM_ERROR("slots = %d (%p)\n", mgr->state->avail_slots, mgr->state);
 	mgr->funcs = &mst_state_funcs;
+	DRM_ERROR("mgr init %d (%p)\n", mgr->state->avail_slots, mgr->state);
 
 	return 0;
 }

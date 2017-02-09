@@ -102,6 +102,8 @@ static void intel_dp_mst_atomic_release(struct drm_connector *connector,
 
 	slots = drm_dp_atomic_release_vcpi_slots(state, mgr,
 						 intel_connector->port);
+	DRM_ERROR("resetting vcpi\n");
+
 	if (slots < 0)
 		DRM_DEBUG_KMS("failed releasing vcpi slots:%d\n", slots);
 }

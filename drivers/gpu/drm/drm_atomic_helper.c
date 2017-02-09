@@ -278,24 +278,30 @@ update_connector_routing(struct drm_atomic_state *state,
 	struct drm_encoder *new_encoder;
 	struct drm_crtc_state *crtc_state;
 
+	DRM_ERROR("updating connector routing\n");
 	DRM_DEBUG_ATOMIC("Updating routing for [CONNECTOR:%d:%s]\n",
 			 connector->base.id,
 			 connector->name);
 
 	if (connector->state->crtc != connector_state->crtc) {
+		DRM_ERROR("crtc changed for this connector%d\n", connector->base.id);
 		if (connector->state->crtc) {
+			DRM_ERROR("connector had old crtc%d\n", connector->state->crtc->base.id);
 			crtc_state = drm_atomic_get_existing_crtc_state(state, connector->state->crtc);
 			crtc_state->connectors_changed = true;
+			DRM_ERROR("2:CRTC for this connector%d is going to be changed\n", connector->base.id);
 		}
 
 		if (connector_state->crtc) {
+			DRM_ERROR("connector has new crtc%d\n", connector_state->crtc->base.id);
 			crtc_state = drm_atomic_get_existing_crtc_state(state, connector_state->crtc);
 			crtc_state->connectors_changed = true;
 		}
+		DRM_ERROR("Setting connectors_changed = True\n");
 	}
 
 	if (!connector_state->crtc) {
-		DRM_DEBUG_ATOMIC("Disabling [CONNECTOR:%d:%s]\n",
+		DRM_DEBUG_ATOMIC("Disabling [CONNECTOR:%d:%s], connector will not have a CRTC\n",
 				connector->base.id,
 				connector->name);
 
@@ -371,11 +377,12 @@ mode_fixup(struct drm_atomic_state *state)
 	int i;
 	int ret;
 
+	DRM_ERROR("mode fixup\n");
 	for_each_crtc_in_state(state, crtc, crtc_state, i) {
 		if (!crtc_state->mode_changed &&
 		    !crtc_state->connectors_changed)
 			continue;
-
+		DRM_ERROR("mode_changed or connectors_changed for CRTC%d, copying mode to adjusted_mode\n", crtc->base.id);
 		drm_mode_copy(&crtc_state->adjusted_mode, &crtc_state->mode);
 	}
 
@@ -385,8 +392,10 @@ mode_fixup(struct drm_atomic_state *state)
 
 		WARN_ON(!!conn_state->best_encoder != !!conn_state->crtc);
 
-		if (!conn_state->crtc || !conn_state->best_encoder)
+		if (!conn_state->crtc || !conn_state->best_encoder) {
+			DRM_ERROR("1: No CRTC for CONNECTOR%d\n", connector->base.id);
 			continue;
+		}
 
 		crtc_state = drm_atomic_get_existing_crtc_state(state,
 								conn_state->crtc);
@@ -512,6 +521,7 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 			 */
 			crtc_state->mode_changed = true;
 			crtc_state->connectors_changed = true;
+			DRM_ERROR("setting mode_changed and connectors_changed to True for crtc%d\n", crtc->base.id);
 		}
 	}
 
@@ -550,10 +560,16 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 			DRM_DEBUG_ATOMIC("[CRTC:%d:%s] active changed\n",
 					 crtc->base.id, crtc->name);
 			crtc_state->active_changed = true;
+		} else {
+			DRM_DEBUG_ATOMIC("[CRTC:%d:%s] active did not change\n",
+					crtc->base.id, crtc->name);
 		}
 
-		if (!drm_atomic_crtc_needs_modeset(crtc_state))
+		if (!drm_atomic_crtc_needs_modeset(crtc_state)) {
+			DRM_ERROR("CRTC does not need modeset\n");
 			continue;
+		}
+		DRM_ERROR("crtc needs modeset\n");
 
 		DRM_DEBUG_ATOMIC("[CRTC:%d:%s] needs all connectors, enable: %c, active: %c\n",
 				 crtc->base.id, crtc->name,
