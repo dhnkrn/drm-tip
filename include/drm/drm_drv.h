@@ -224,6 +224,9 @@ struct drm_driver {
 	 */
 	void (*disable_vblank) (struct drm_device *dev, unsigned int pipe);
 
+	void (*vblank_pre_enable) (struct drm_device *dev, unsigned int pipe);
+	void (*vblank_post_disable) (struct drm_device *dev, unsigned int pipe);
+
 	/**
 	 * @get_scanout_position:
 	 *

@@ -284,6 +284,7 @@ static void hsw_activate_psr1(struct intel_dp *intel_dp)
 
 	val |= I915_READ(EDP_PSR_CTL) & EDP_PSR_RESTORE_PSR_ACTIVE_CTX_MASK;
 	I915_WRITE(EDP_PSR_CTL, val);
+	DRM_ERROR("\n");
 }
 
 static void hsw_activate_psr2(struct intel_dp *intel_dp)

@@ -130,6 +130,8 @@ intel_display_power_domain_str(enum intel_display_power_domain domain)
 		return "INIT";
 	case POWER_DOMAIN_MODESET:
 		return "MODESET";
+	case POWER_DOMAIN_VBLANK:
+		return "VBLANK";
 	default:
 		MISSING_CASE(domain);
 		return "?";
@@ -533,7 +535,11 @@ static void gen9_set_dc_state(struct drm_i915_private *dev_priv, uint32_t state)
 
 	val = I915_READ(DC_STATE_EN);
 	mask = gen9_dc_mask(dev_priv);
-	DRM_DEBUG_KMS("Setting DC state from %02x to %02x\n",
+
+	if ((val & mask) == state)
+		return;
+
+	DRM_ERROR("Setting DC state from %02x to %02x\n",
 		      val & mask, state);
 
 	/* Check if DMC is ignoring our DC state requests */
@@ -615,7 +621,7 @@ void skl_enable_dc6(struct drm_i915_private *dev_priv)
 {
 	assert_can_enable_dc6(dev_priv);
 
-	DRM_DEBUG_KMS("Enabling DC6\n");
+	DRM_ERROR("Enabling DC6\n");
 
 	gen9_set_dc_state(dev_priv, DC_STATE_EN_UPTO_DC6);
 
@@ -623,7 +629,7 @@ void skl_enable_dc6(struct drm_i915_private *dev_priv)
 
 void skl_disable_dc6(struct drm_i915_private *dev_priv)
 {
-	DRM_DEBUG_KMS("Disabling DC6\n");
+	DRM_ERROR("Disabling DC6\n");
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 }
@@ -697,11 +703,12 @@ static void gen9_assert_dbuf_enabled(struct drm_i915_private *dev_priv)
 	     "Unexpected DBuf power power state (0x%08x)\n", tmp);
 }
 
+
 static void gen9_dc_off_power_well_enable(struct drm_i915_private *dev_priv,
 					  struct i915_power_well *power_well)
 {
 	struct intel_cdclk_state cdclk_state = {};
-
+DRM_ERROR("\n");
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
 	dev_priv->display.get_cdclk(dev_priv, &cdclk_state);
@@ -719,11 +726,41 @@ static void gen9_dc_off_power_well_disable(struct drm_i915_private *dev_priv,
 {
 	if (!dev_priv->csr.dmc_payload)
 		return;
-
+	DRM_ERROR("\n");
 	if (dev_priv->csr.allowed_dc_mask & DC_STATE_EN_UPTO_DC6)
 		skl_enable_dc6(dev_priv);
 	else if (dev_priv->csr.allowed_dc_mask & DC_STATE_EN_UPTO_DC5)
 		gen9_enable_dc5(dev_priv);
+}
+
+void gen9_vblank_pre_enable(struct drm_device *dev, unsigned int refcount)
+{
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	DRM_ERROR("BEFORE_GET: vblank refcount %u power domain use_count %u\n", refcount, dev_priv->power_domains.domain_use_count[POWER_DOMAIN_VBLANK]);
+	intel_display_power_get(dev_priv, POWER_DOMAIN_VBLANK);
+}
+
+void intel_display_power_delayed_put(struct work_struct *delayed_put)
+{
+	struct drm_i915_private *dev_priv = container_of(delayed_put, struct drm_i915_private, power_domains.delayed_put);
+
+	while (atomic_read(&dev_priv->power_domains.put_counter) > 0) {
+		intel_display_power_put(dev_priv, POWER_DOMAIN_VBLANK);
+		atomic_dec(&dev_priv->power_domains.put_counter);
+		DRM_ERROR("put_counter %u\n", atomic_read(&dev_priv->power_domains.put_counter));
+	}
+}
+
+void gen9_vblank_post_disable(struct drm_device *dev, unsigned int refcount)
+{
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	DRM_ERROR("BEFORE_PUT: vblank refcount %u power domain use_count %u\n",
+		       refcount, dev_priv->power_domains.domain_use_count[POWER_DOMAIN_VBLANK]);
+
+	atomic_inc(&dev_priv->power_domains.put_counter);
+	DRM_ERROR("put_counter %u\n", atomic_read(&dev_priv->power_domains.put_counter));
+	schedule_work(&dev_priv->power_domains.delayed_put);
+	return;
 }
 
 static void i9xx_power_well_sync_hw_noop(struct drm_i915_private *dev_priv,
@@ -1452,6 +1489,8 @@ __intel_display_power_get_domain(struct drm_i915_private *dev_priv,
 		intel_power_well_get(dev_priv, power_well);
 
 	power_domains->domain_use_count[domain]++;
+	if (domain == POWER_DOMAIN_VBLANK)
+		DRM_ERROR("AFTER use_count %u\n", power_domains->domain_use_count[domain]);
 }
 
 /**
@@ -1534,7 +1573,6 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	struct i915_power_well *power_well;
 
 	power_domains = &dev_priv->power_domains;
-
 	mutex_lock(&power_domains->lock);
 
 	WARN(!power_domains->domain_use_count[domain],
@@ -1542,6 +1580,8 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	     intel_display_power_domain_str(domain));
 	power_domains->domain_use_count[domain]--;
 
+	if (domain == POWER_DOMAIN_VBLANK)
+		DRM_ERROR("AFTER use_count %u\n", power_domains->domain_use_count[domain]);
 	for_each_power_domain_well_rev(dev_priv, power_well, BIT_ULL(domain))
 		intel_power_well_put(dev_priv, power_well);
 
@@ -1707,6 +1747,7 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	SKL_DISPLAY_POWERWELL_2_POWER_DOMAINS |		\
 	BIT_ULL(POWER_DOMAIN_MODESET) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_A) |			\
+	BIT_ULL(POWER_DOMAIN_VBLANK) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
 
 #define BXT_DISPLAY_POWERWELL_2_POWER_DOMAINS (		\
@@ -2590,6 +2631,9 @@ static void skl_display_core_init(struct drm_i915_private *dev_priv,
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
 	struct i915_power_well *well;
 	uint32_t val;
+
+	INIT_WORK(&power_domains->delayed_put, intel_display_power_delayed_put);
+	atomic_set(&power_domains->put_counter, 0);
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 

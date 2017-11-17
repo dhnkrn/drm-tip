@@ -112,7 +112,7 @@ void intel_pipe_update_start(const struct intel_crtc_state *new_crtc_state)
 	if (min <= 0 || max <= 0)
 		return;
 
-	if (WARN_ON(drm_crtc_vblank_get(&crtc->base)))
+	if (WARN_ON(drm_crtc_vblank_atomic_get(&crtc->base)))
 		return;
 
 	crtc->debug.min_vbl = min;
@@ -146,7 +146,7 @@ void intel_pipe_update_start(const struct intel_crtc_state *new_crtc_state)
 
 	finish_wait(wq, &wait);
 
-	drm_crtc_vblank_put(&crtc->base);
+	drm_crtc_vblank_atomic_put(&crtc->base);
 
 	/*
 	 * On VLV/CHV DSI the scanline counter would appear to
@@ -197,7 +197,7 @@ void intel_pipe_update_end(struct intel_crtc_state *new_crtc_state)
 	 * event outside of the critical section - the spinlock might spin for a
 	 * while ... */
 	if (new_crtc_state->base.event) {
-		WARN_ON(drm_crtc_vblank_get(&crtc->base) != 0);
+		WARN_ON(drm_crtc_vblank_atomic_get(&crtc->base) != 0);
 
 		spin_lock(&crtc->base.dev->event_lock);
 		drm_crtc_arm_vblank_event(&crtc->base, new_crtc_state->base.event);

@@ -895,6 +895,7 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 	 * See update_scanline_offset() for the details on the
 	 * scanline_offset adjustment.
 	 */
+
 	return (position + crtc->scanline_offset) % vtotal;
 }
 
@@ -1008,7 +1009,6 @@ static bool i915_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
 		*vpos = position / htotal;
 		*hpos = position - (*vpos * htotal);
 	}
-
 	return true;
 }
 
@@ -4113,6 +4113,8 @@ void intel_irq_init(struct drm_i915_private *dev_priv)
 		dev->driver->irq_uninstall = gen8_irq_reset;
 		dev->driver->enable_vblank = gen8_enable_vblank;
 		dev->driver->disable_vblank = gen8_disable_vblank;
+		dev->driver->vblank_pre_enable = gen9_vblank_pre_enable;
+		dev->driver->vblank_post_disable = gen9_vblank_post_disable;
 		if (IS_GEN9_LP(dev_priv))
 			dev_priv->display.hpd_irq_setup = bxt_hpd_irq_setup;
 		else if (HAS_PCH_SPT(dev_priv) || HAS_PCH_KBP(dev_priv) ||

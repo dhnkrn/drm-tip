@@ -399,6 +399,7 @@ enum intel_display_power_domain {
 	POWER_DOMAIN_GMBUS,
 	POWER_DOMAIN_MODESET,
 	POWER_DOMAIN_INIT,
+	POWER_DOMAIN_VBLANK,
 
 	POWER_DOMAIN_NUM,
 };
@@ -1490,6 +1491,8 @@ struct i915_power_domains {
 	struct mutex lock;
 	int domain_use_count[POWER_DOMAIN_NUM];
 	struct i915_power_well *power_wells;
+	struct work_struct delayed_put;
+	atomic_t put_counter;
 };
 
 #define MAX_L3_SLICES 2

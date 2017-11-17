@@ -1775,6 +1775,9 @@ void intel_psr_compute_config(struct intel_dp *intel_dp,
 			      struct intel_crtc_state *crtc_state);
 
 /* intel_runtime_pm.c */
+void gen9_vblank_pre_enable(struct drm_device *dev, unsigned int pipe);
+void gen9_vblank_post_disable(struct drm_device *dev, unsigned int pipe);
+
 int intel_power_domains_init(struct drm_i915_private *);
 void intel_power_domains_fini(struct drm_i915_private *);
 void intel_power_domains_init_hw(struct drm_i915_private *dev_priv, bool resume);
