@@ -1032,6 +1032,23 @@ struct i915_power_well {
 			bool has_fuses:1;
 		} hsw;
 	};
+
+	/* Lock to serialize access to count, hw_enabled and ops, used for
+	 * power wells that have supports_atomix_ctx set to True.
+	 */
+	spinlock_t lock;
+
+	/* Indicates that the get/put methods for this power well can be called
+	 * in atomic contexts, requires .ops to not sleep. This is valid
+	 * only for the DC_OFF power well currently.
+	 */
+	bool supports_atomic_ctx;
+
+	/* DC_OFF power well was disabled since the last time vblanks were
+	 * disabled.
+	 */
+	bool dc_off_disabled;
+
 	const struct i915_power_well_ops *ops;
 };
 
@@ -1045,7 +1062,7 @@ struct i915_power_domains {
 	int power_well_count;
 
 	struct mutex lock;
-	int domain_use_count[POWER_DOMAIN_NUM];
+	atomic_t domain_use_count[POWER_DOMAIN_NUM];
 	struct i915_power_well *power_wells;
 };
 
