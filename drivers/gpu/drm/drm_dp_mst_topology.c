@@ -994,6 +994,10 @@ static struct drm_dp_mst_branch *drm_dp_mst_get_validated_mstb_ref_locked(struct
 static struct drm_dp_mst_branch *drm_dp_get_validated_mstb_ref(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_branch *mstb)
 {
 	struct drm_dp_mst_branch *rmstb = NULL;
+
+	if (!mstb)
+		return rmstb;
+
 	mutex_lock(&mgr->lock);
 	if (mgr->mst_primary)
 		rmstb = drm_dp_mst_get_validated_mstb_ref_locked(mgr->mst_primary, mstb);
@@ -1022,6 +1026,10 @@ static struct drm_dp_mst_port *drm_dp_mst_get_port_ref_locked(struct drm_dp_mst_
 static struct drm_dp_mst_port *drm_dp_get_validated_port_ref(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_port *port)
 {
 	struct drm_dp_mst_port *rport = NULL;
+
+	if (!port)
+		return rport;
+
 	mutex_lock(&mgr->lock);
 	if (mgr->mst_primary)
 		rport = drm_dp_mst_get_port_ref_locked(mgr->mst_primary, port);
