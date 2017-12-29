@@ -1344,11 +1344,22 @@ static struct drm_dp_mst_branch *drm_dp_get_mst_branch_device_by_guid(
 	return mstb;
 }
 
+static void power_cycle_mstb(struct drm_dp_mst_topology_mgr *mgr,
+			     struct drm_dp_mst_branch *mstb)
+{
+	if (mgr->mst_primary != mstb) {
+		DRM_DEBUG_KMS("power cycling downstream branch\n");
+		drm_dp_send_power_updown_phy(mstb->mgr, mstb->port_parent, false);
+		drm_dp_send_power_updown_phy(mstb->mgr, mstb->port_parent, true);
+	}
+}
+
 static void drm_dp_check_and_send_link_address(struct drm_dp_mst_topology_mgr *mgr,
 					       struct drm_dp_mst_branch *mstb)
 {
 	struct drm_dp_mst_port *port;
 	struct drm_dp_mst_branch *mstb_child;
+
 	if (!mstb->link_address_sent)
 		drm_dp_send_link_address(mgr, mstb);
 
@@ -1365,7 +1376,17 @@ static void drm_dp_check_and_send_link_address(struct drm_dp_mst_topology_mgr *m
 		if (port->mstb) {
 			mstb_child = drm_dp_get_validated_mstb_ref(mgr, port->mstb);
 			if (mstb_child) {
-				drm_dp_check_and_send_link_address(mgr, mstb_child);
+				int retry = 5;
+
+				/* drm_send_link_address() should have already sent
+				 * Link Address for this branch, power cycle and
+				 * retry if that failed.
+				 */
+				while(retry-- && !mstb_child->link_address_sent) {
+					DRM_DEBUG_KMS("retrying link_address %d\n", retry);
+					power_cycle_mstb(mgr, mstb_child);
+					drm_dp_send_link_address(mgr, mstb_child);
+				}
 				drm_dp_put_mst_branch_device(mstb_child);
 			}
 		}
@@ -1604,12 +1625,13 @@ static void drm_dp_send_link_address(struct drm_dp_mst_topology_mgr *mgr,
 	int len;
 	struct drm_dp_sideband_msg_tx *txmsg;
 	int ret;
-	int attempts = 5;
 
-retry:	txmsg = kzalloc(sizeof(*txmsg), GFP_KERNEL);
+	txmsg = kzalloc(sizeof(*txmsg), GFP_KERNEL);
 	if (!txmsg)
 		return;
 
+	if (mstb == mgr->mst_primary)
+		drm_dp_dpcd_writeb(mgr->aux, DP_SET_POWER, DP_SET_POWER_D0);
 	txmsg->dst = mstb;
 	len = build_link_address(txmsg);
 
@@ -1644,14 +1666,6 @@ retry:	txmsg = kzalloc(sizeof(*txmsg), GFP_KERNEL);
 			}
 			(*mgr->cbs->hotplug)(mgr);
 		}
-	} else if (attempts--) {
-		kfree(txmsg);
-		drm_dp_send_power_updown_phy(mstb->mgr, mstb->port_parent,
-					     false);
-		drm_dp_send_power_updown_phy(mstb->mgr, mstb->port_parent,
-					     true);
-		DRM_DEBUG_KMS("link address failed %d, retrying\n", ret);
-		goto retry;
 	} else {
 		mstb->link_address_sent = false;
 		DRM_DEBUG_KMS("link address failed %d, giving up\n", ret);
