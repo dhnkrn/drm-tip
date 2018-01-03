@@ -14739,6 +14739,24 @@ static bool has_pch_trancoder(struct drm_i915_private *dev_priv,
 		(HAS_PCH_LPT_H(dev_priv) && pch_transcoder == PIPE_A);
 }
 
+static void modeset_enable_vblanks(struct drm_i915_private *dev_priv)
+{
+	enum pipe pipe;
+
+	for_each_pipe(dev_priv, pipe) {
+		struct intel_crtc *crtc;
+
+		crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
+
+		/* restore vblank interrupts to correct state */
+		drm_crtc_vblank_reset(&crtc->base);
+
+		if (crtc->active)
+			drm_crtc_vblank_on(&crtc->base);
+	}
+}
+
+
 static void intel_sanitize_crtc(struct intel_crtc *crtc,
 				struct drm_modeset_acquire_ctx *ctx)
 {
@@ -14754,12 +14772,8 @@ static void intel_sanitize_crtc(struct intel_crtc *crtc,
 			   I915_READ(reg) & ~PIPECONF_FRAME_START_DELAY_MASK);
 	}
 
-	/* restore vblank interrupts to correct state */
-	drm_crtc_vblank_reset(&crtc->base);
 	if (crtc->active) {
 		struct intel_plane *plane;
-
-		drm_crtc_vblank_on(&crtc->base);
 
 		/* Disable everything but the primary plane */
 		for_each_intel_plane_on_crtc(dev, crtc, plane) {
@@ -15146,6 +15160,8 @@ intel_modeset_setup_hw_state(struct drm_device *dev,
 	intel_display_set_init_power(dev_priv, false);
 
 	intel_power_domains_verify_state(dev_priv);
+
+	modeset_enable_vblanks(dev_priv);
 
 	intel_fbc_init_pipe_state(dev_priv);
 }
