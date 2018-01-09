@@ -2963,11 +2963,9 @@ static int gen8_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	unsigned long irqflags;
-	bool needs_restore = false;
 
-	intel_display_power_vblank_get(dev_priv, &needs_restore);
-	if (needs_restore)
-		drm_crtc_vblank_restore(dev, pipe);
+//	intel_display_power_vblank_get(dev_priv);
+	drm_crtc_vblank_restore(dev, pipe);
 
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 	bdw_enable_pipe_irq(dev_priv, pipe, GEN8_PIPE_VBLANK);
@@ -3020,7 +3018,7 @@ static void gen8_disable_vblank(struct drm_device *dev, unsigned int pipe)
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 	bdw_disable_pipe_irq(dev_priv, pipe, GEN8_PIPE_VBLANK);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
-	intel_display_power_vblank_put(dev_priv);
+//	intel_display_power_vblank_put(dev_priv);
 }
 
 static void ibx_irq_reset(struct drm_i915_private *dev_priv)

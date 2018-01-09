@@ -771,7 +771,6 @@ static void gen9_dc_off_power_well_disable(struct drm_i915_private *dev_priv,
 		skl_enable_dc6(dev_priv);
 	else if (dev_priv->csr.allowed_dc_mask & DC_STATE_EN_UPTO_DC5)
 		gen9_enable_dc5(dev_priv);
-	power_well->dc_off_disabled = true;
 }
 
 static void i9xx_power_well_sync_hw_noop(struct drm_i915_private *dev_priv,
@@ -1489,14 +1488,11 @@ static void chv_pipe_power_well_disable(struct drm_i915_private *dev_priv,
 	chv_set_pipe_power_well(dev_priv, power_well, false);
 }
 
-void intel_display_power_vblank_get(struct drm_i915_private *dev_priv,
-				    bool *needs_restore)
+void intel_display_power_vblank_get(struct drm_i915_private *dev_priv)
 {
 	struct i915_power_domains *power_domains  = &dev_priv->power_domains;
 	struct i915_power_well *power_well;
 	enum intel_display_power_domain domain = POWER_DOMAIN_VBLANK;
-
-	*needs_restore = false;
 
 	if (!HAS_CSR(dev_priv))
 		return;
@@ -1511,8 +1507,6 @@ void intel_display_power_vblank_get(struct drm_i915_private *dev_priv,
 
 		power_well_lock(power_well, flags);
 		__intel_power_well_get(dev_priv, power_well);
-		*needs_restore = power_well->dc_off_disabled;
-		power_well->dc_off_disabled = false;
 		power_well_unlock(power_well, flags);
 	}
 
@@ -1840,7 +1834,6 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	BIT_ULL(POWER_DOMAIN_INIT))
 #define SKL_DISPLAY_DC_OFF_POWER_DOMAINS (		\
 	SKL_DISPLAY_POWERWELL_2_POWER_DOMAINS |		\
-	BIT_ULL(POWER_DOMAIN_GT_IRQ) |			\
 	BIT_ULL(POWER_DOMAIN_MODESET) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_A) |			\
 	BIT_ULL(POWER_DOMAIN_VBLANK) |			\
@@ -2251,7 +2244,6 @@ static struct i915_power_well skl_power_wells[] = {
 		.ops = &gen9_dc_off_power_well_ops,
 		.id = SKL_DISP_PW_DC_OFF,
 		.supports_atomic_ctx = true,
-		.dc_off_disabled = false,
 	},
 	{
 		.name = "power well 2",
@@ -2313,7 +2305,6 @@ static struct i915_power_well bxt_power_wells[] = {
 		.ops = &gen9_dc_off_power_well_ops,
 		.id = SKL_DISP_PW_DC_OFF,
 		.supports_atomic_ctx = true,
-		.dc_off_disabled = false,
 	},
 	{
 		.name = "power well 2",
@@ -2370,7 +2361,6 @@ static struct i915_power_well glk_power_wells[] = {
 		.ops = &gen9_dc_off_power_well_ops,
 		.id = SKL_DISP_PW_DC_OFF,
 		.supports_atomic_ctx = true,
-		.dc_off_disabled = false,
 	},
 	{
 		.name = "power well 2",
@@ -2496,7 +2486,6 @@ static struct i915_power_well cnl_power_wells[] = {
 		.ops = &gen9_dc_off_power_well_ops,
 		.id = SKL_DISP_PW_DC_OFF,
 		.supports_atomic_ctx = true,
-		.dc_off_disabled = false,
 	},
 	{
 		.name = "power well 2",
@@ -3262,6 +3251,12 @@ void intel_power_domains_verify_state(struct drm_i915_private *dev_priv)
 		domains_count = 0;
 		for_each_power_domain(domain, power_well->domains)
 			domains_count += atomic_read(&power_domains->domain_use_count[domain]);
+
+
+		/* domains_count can get updated outside of the locks */
+		if (power_well->id == SKL_DISP_PW_DC_OFF)
+			if (abs(well_count - domains_count) <= 1)
+				continue;
 
 		if (well_count != domains_count) {
 			DRM_ERROR("power well %s refcount/domain refcount mismatch "

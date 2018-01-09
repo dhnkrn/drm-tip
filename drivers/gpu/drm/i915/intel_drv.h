@@ -1797,8 +1797,7 @@ bool intel_display_power_get_if_enabled(struct drm_i915_private *dev_priv,
 					enum intel_display_power_domain domain);
 void intel_display_power_put(struct drm_i915_private *dev_priv,
 			     enum intel_display_power_domain domain);
-void intel_display_power_vblank_get(struct drm_i915_private *dev_priv,
-				    bool *needs_restore);
+void intel_display_power_vblank_get(struct drm_i915_private *dev_priv);
 void intel_display_power_vblank_put(struct drm_i915_private *dev_priv);
 
 static inline void

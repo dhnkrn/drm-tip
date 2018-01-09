@@ -1044,11 +1044,6 @@ struct i915_power_well {
 	 */
 	bool supports_atomic_ctx;
 
-	/* DC_OFF power well was disabled since the last time vblanks were
-	 * disabled.
-	 */
-	bool dc_off_disabled;
-
 	const struct i915_power_well_ops *ops;
 };
 
