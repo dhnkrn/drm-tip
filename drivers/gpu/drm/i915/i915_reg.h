@@ -4136,6 +4136,9 @@ enum {
 #define   EDP_PSR_DEBUG_MASK_DISP_REG_WRITE    (1<<16)
 #define   EDP_PSR_DEBUG_EXIT_ON_PIXEL_UNDERRUN (1<<15)
 
+#define EDP_PSR_EVENT				_MMIO(dev_priv->psr_mmio_base + 0x48)
+#define EDP_PSR_DEBUG2				_MMIO(dev_priv->psr_mmio_base + 0x260)
+
 #define EDP_PSR2_CTL			_MMIO(0x6f900)
 #define   EDP_PSR2_ENABLE		(1<<31)
 #define   EDP_SU_TRACK_ENABLE		(1<<30)

@@ -761,7 +761,9 @@ struct i915_psr {
 	bool sink_support;
 	struct intel_dp *enabled;
 	bool active;
-	struct delayed_work work;
+	struct timer_list activate_timer;
+	struct work_struct activate_work;
+	unsigned long earliest_activate;
 	unsigned busy_frontbuffer_bits;
 	bool psr2_support;
 	bool aux_frame_sync;

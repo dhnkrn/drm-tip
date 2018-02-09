@@ -585,6 +585,7 @@ static int __setplane_internal(struct drm_plane *plane,
 	if (!fb) {
 		plane->old_fb = plane->fb;
 		ret = plane->funcs->disable_plane(plane, ctx);
+		DRM_DEBUG_KMS("disabling cursor plane\n");
 		if (!ret) {
 			plane->crtc = NULL;
 			plane->fb = NULL;
@@ -759,8 +760,10 @@ static int drm_mode_cursor_universal(struct drm_crtc *crtc,
 	 * the reference if the plane update fails.
 	 */
 	if (req->flags & DRM_MODE_CURSOR_BO) {
+		DRM_DEBUG_KMS("cursor_bo mode\n");
 		if (req->handle) {
 			fb = drm_internal_framebuffer_create(dev, &fbreq, file_priv);
+			DRM_DEBUG_KMS("create framebuffer\n");
 			if (IS_ERR(fb)) {
 				DRM_DEBUG_KMS("failed to wrap cursor buffer in drm framebuffer\n");
 				return PTR_ERR(fb);
@@ -771,15 +774,18 @@ static int drm_mode_cursor_universal(struct drm_crtc *crtc,
 			fb = NULL;
 		}
 	} else {
+		DRM_DEBUG_KMS("reuse fb\n");
 		fb = crtc->cursor->fb;
 		if (fb)
 			drm_framebuffer_get(fb);
 	}
 
 	if (req->flags & DRM_MODE_CURSOR_MOVE) {
+		DRM_DEBUG_KMS("cursor move\n");
 		crtc_x = req->x;
 		crtc_y = req->y;
 	} else {
+		DRM_DEBUG_KMS("cursor no move\n");
 		crtc_x = crtc->cursor_x;
 		crtc_y = crtc->cursor_y;
 	}
@@ -837,6 +843,8 @@ retry:
 	 * handler rather than using legacy cursor handlers.
 	 */
 	if (crtc->cursor) {
+
+		DRM_DEBUG_KMS("universal cursor plane handler\n");
 		ret = drm_modeset_lock(&crtc->cursor->mutex, &ctx);
 		if (ret)
 			goto out;

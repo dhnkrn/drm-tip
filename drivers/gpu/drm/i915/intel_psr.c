@@ -241,6 +241,13 @@ static void hsw_activate_psr1(struct intel_dp *intel_dp)
 	uint32_t idle_frames = max(6, dev_priv->vbt.psr.idle_frames);
 	uint32_t val = EDP_PSR_ENABLE;
 
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE(EDP_PSR_DEBUG2, I915_READ(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+
 	val |= max_sleep_time << EDP_PSR_MAX_SLEEP_TIME_SHIFT;
 	val |= idle_frames << EDP_PSR_IDLE_FRAME_SHIFT;
 
@@ -276,6 +283,10 @@ static void hsw_activate_psr1(struct intel_dp *intel_dp)
 
 	val |= I915_READ(EDP_PSR_CTL) & EDP_PSR_RESTORE_PSR_ACTIVE_CTX_MASK;
 	I915_WRITE(EDP_PSR_CTL, val);
+
+	DRM_DEBUG_KMS("AFTER CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
 }
 
 static void hsw_activate_psr2(struct intel_dp *intel_dp)
@@ -450,6 +461,30 @@ static void intel_psr_activate(struct intel_dp *intel_dp)
 	dev_priv->psr.active = true;
 }
 
+static void intel_psr_schedule(struct drm_i915_private *dev_priv,
+			       unsigned long min_wait_ms)
+{
+	unsigned long next;
+
+	lockdep_assert_held(&dev_priv->psr.lock);
+
+	/*
+	 * We update next_enable *and* call mod_timer() because it's
+	 * possible that intel_psr_work() has already been called and is
+	 * waiting for psr.lock.  If that's the case, we don't want it
+	 * to immediately enable PSR.
+	 *
+	 * We also need to make sure that PSR is never activated earlier
+	 * than requested to avoid breaking intel_psr_enable()'s workaround
+	 * for pre-gen9 hardware.
+	 */
+	next = jiffies + msecs_to_jiffies(min_wait_ms);
+	if (time_after(next, dev_priv->psr.earliest_activate)) {
+		dev_priv->psr.earliest_activate = next;
+		mod_timer(&dev_priv->psr.activate_timer, next);
+	}
+}
+
 static void hsw_psr_enable_source(struct intel_dp *intel_dp,
 				  const struct intel_crtc_state *crtc_state)
 {
@@ -513,6 +548,13 @@ void intel_psr_enable(struct intel_dp *intel_dp,
 		goto unlock;
 	}
 
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE(EDP_PSR_DEBUG2, I915_READ(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+
 	dev_priv->psr.psr2_support = crtc_state->has_psr2;
 	dev_priv->psr.busy_frontbuffer_bits = 0;
 
@@ -534,8 +576,7 @@ void intel_psr_enable(struct intel_dp *intel_dp,
 		 *     - On HSW/BDW we get a recoverable frozen screen until
 		 *       next exit-activate sequence.
 		 */
-		schedule_delayed_work(&dev_priv->psr.work,
-				      msecs_to_jiffies(intel_dp->panel_power_cycle_delay * 5));
+		intel_psr_schedule(dev_priv, intel_dp->panel_power_cycle_delay * 5);
 	}
 
 unlock:
@@ -653,13 +694,14 @@ void intel_psr_disable(struct intel_dp *intel_dp,
 	dev_priv->psr.enabled = NULL;
 	mutex_unlock(&dev_priv->psr.lock);
 
-	cancel_delayed_work_sync(&dev_priv->psr.work);
+	cancel_work_sync(&dev_priv->psr.activate_work);
+	del_timer_sync(&dev_priv->psr.activate_timer);
 }
 
 static void intel_psr_work(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
-		container_of(work, typeof(*dev_priv), psr.work.work);
+		container_of(work, typeof(*dev_priv), psr.activate_work);
 	struct intel_dp *intel_dp = dev_priv->psr.enabled;
 	struct drm_crtc *crtc = dp_to_dig_port(intel_dp)->base.base.crtc;
 	enum pipe pipe = to_intel_crtc(crtc)->pipe;
@@ -669,6 +711,7 @@ static void intel_psr_work(struct work_struct *work)
 	 * PSR might take some time to get fully disabled
 	 * and be ready for re-enable.
 	 */
+
 	if (HAS_DDI(dev_priv)) {
 		if (dev_priv->psr.psr2_support) {
 			if (intel_wait_for_register(dev_priv,
@@ -705,6 +748,18 @@ static void intel_psr_work(struct work_struct *work)
 	if (!intel_dp)
 		goto unlock;
 
+
+	if (!time_after_eq(jiffies, dev_priv->psr.earliest_activate)) {
+		/*
+		 * We raced: intel_psr_schedule() tried to delay us, but
+		 * we were already in intel_psr_timer_fn() or already in
+		 * the workqueue.  We can safely return -- the
+		 * intel_psr_schedule() call that put earliest_activeate
+		 * in the future will have called mod_timer().
+		 */
+		goto unlock;
+	}
+
 	/*
 	 * The delayed work can race with an invalidate hence we need to
 	 * recheck. Since psr_flush first clears this and then reschedules we
@@ -718,15 +773,45 @@ unlock:
 	mutex_unlock(&dev_priv->psr.lock);
 }
 
+static void intel_psr_timer_fn(struct timer_list *timer)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(timer, typeof(*dev_priv), psr.activate_timer);
+
+	/*
+	 * We need a non-atomic context to activate PSR.  Using
+	 * delayed_work wouldn't be an improvement -- delayed_work is
+	 * just a timer that schedules work when it fires, but there's
+	 * no equivalent of mod_timer() for delayed_work.
+	 */
+	schedule_work(&dev_priv->psr.activate_work);
+}
+
 static void intel_psr_exit(struct drm_i915_private *dev_priv)
 {
 	struct intel_dp *intel_dp = dev_priv->psr.enabled;
 	struct drm_crtc *crtc = dp_to_dig_port(intel_dp)->base.base.crtc;
 	enum pipe pipe = to_intel_crtc(crtc)->pipe;
 	u32 val;
+	u32 status;
 
 	if (!dev_priv->psr.active)
 		return;
+
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE(EDP_PSR_DEBUG2, I915_READ(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+
+	status = I915_READ(EDP_PSR_STATUS);
+	while ((status & EDP_PSR_STATUS_STATE_MASK) != 0) {
+		usleep_range(200, 400);
+		status = I915_READ(EDP_PSR_STATUS);
+		DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+		I915_READ(EDP_PSR_CTL), status, I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	}
 
 	if (HAS_DDI(dev_priv)) {
 		if (dev_priv->psr.aux_frame_sync)
@@ -768,6 +853,24 @@ static void intel_psr_exit(struct drm_i915_private *dev_priv)
 		drm_dp_dpcd_writeb(&intel_dp->aux, DP_SET_POWER,
 				   DP_SET_POWER_D0);
 	}
+
+
+
+	status = I915_READ(EDP_PSR_STATUS);
+	while ((status & EDP_PSR_STATUS_STATE_MASK) != 0) {
+		usleep_range(200, 400);
+		status = I915_READ(EDP_PSR_STATUS);
+		DRM_DEBUG_KMS("AFTER CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+		I915_READ(EDP_PSR_CTL), status, I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	}
+
+	DRM_DEBUG_KMS("AFTER CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE(EDP_PSR_DEBUG2, I915_READ(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("AFTER CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ(EDP_PSR_CTL), I915_READ(EDP_PSR_STATUS), I915_READ(EDP_PSR_EVENT), I915_READ(EDP_PSR_DEBUG2));
 
 	dev_priv->psr.active = false;
 }
@@ -853,8 +956,10 @@ void intel_psr_invalidate(struct drm_i915_private *dev_priv,
 	frontbuffer_bits &= INTEL_FRONTBUFFER_ALL_MASK(pipe);
 	dev_priv->psr.busy_frontbuffer_bits |= frontbuffer_bits;
 
-	if (frontbuffer_bits)
+	if (frontbuffer_bits) {
+		DRM_DEBUG_KMS("\n");
 		intel_psr_exit(dev_priv);
+	}
 
 	mutex_unlock(&dev_priv->psr.lock);
 }
@@ -894,13 +999,14 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
 	dev_priv->psr.busy_frontbuffer_bits &= ~frontbuffer_bits;
 
 	/* By definition flush = invalidate + flush */
-	if (frontbuffer_bits)
+	if (frontbuffer_bits) {
+		DRM_DEBUG_KMS("\n");
 		intel_psr_exit(dev_priv);
+	}
 
 	if (!dev_priv->psr.active && !dev_priv->psr.busy_frontbuffer_bits)
-		if (!work_busy(&dev_priv->psr.work.work))
-			schedule_delayed_work(&dev_priv->psr.work,
-					      msecs_to_jiffies(100));
+		intel_psr_schedule(dev_priv, 100);
+
 	mutex_unlock(&dev_priv->psr.lock);
 }
 
@@ -947,7 +1053,8 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 		dev_priv->psr.link_standby = false;
 	}
 
-	INIT_DELAYED_WORK(&dev_priv->psr.work, intel_psr_work);
+	timer_setup(&dev_priv->psr.activate_timer, intel_psr_timer_fn, 0);
+	INIT_WORK(&dev_priv->psr.activate_work, intel_psr_work);
 	mutex_init(&dev_priv->psr.lock);
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
@@ -963,4 +1070,6 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 		dev_priv->psr.activate = hsw_psr_activate;
 		dev_priv->psr.setup_vsc = hsw_psr_setup_vsc;
 	}
+
+	dev_priv->psr.earliest_activate = jiffies;
 }

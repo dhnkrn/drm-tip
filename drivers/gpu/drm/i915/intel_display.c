@@ -9671,6 +9671,12 @@ static void i9xx_update_cursor(struct intel_plane *plane,
 
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
 
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ_FW(EDP_PSR_CTL), I915_READ_FW(EDP_PSR_STATUS), I915_READ_FW(EDP_PSR_EVENT), I915_READ_FW(EDP_PSR_DEBUG2));
+	I915_WRITE_FW(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE_FW(EDP_PSR_DEBUG2, I915_READ_FW(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ_FW(EDP_PSR_CTL), I915_READ_FW(EDP_PSR_STATUS), I915_READ_FW(EDP_PSR_EVENT), I915_READ_FW(EDP_PSR_DEBUG2));
 	/*
 	 * On some platforms writing CURCNTR first will also
 	 * cause CURPOS to be armed by the CURBASE write.
@@ -9689,6 +9695,9 @@ static void i9xx_update_cursor(struct intel_plane *plane,
 	 * CURCNTR and CUR_FBC_CTL are always
 	 * armed by the CURBASE write only.
 	 */
+
+
+
 	if (plane->cursor.base != base ||
 	    plane->cursor.size != fbc_ctl ||
 	    plane->cursor.cntl != cntl) {
@@ -9707,6 +9716,13 @@ static void i9xx_update_cursor(struct intel_plane *plane,
 	}
 
 	POSTING_READ_FW(CURBASE(pipe));
+
+	DRM_DEBUG_KMS("AFTER: CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ_FW(EDP_PSR_CTL), I915_READ_FW(EDP_PSR_STATUS), I915_READ_FW(EDP_PSR_EVENT), I915_READ_FW(EDP_PSR_DEBUG2));
+	I915_WRITE_FW(EDP_PSR_EVENT, 0x3FFFF);
+	I915_WRITE_FW(EDP_PSR_DEBUG2, I915_READ_FW(EDP_PSR_DEBUG2) | 0x02);
+	DRM_DEBUG_KMS("AFTER: CTL %x\t STATUS %x\t EVENT %x\t DEBUG %x\n",
+	I915_READ_FW(EDP_PSR_CTL), I915_READ_FW(EDP_PSR_STATUS), I915_READ_FW(EDP_PSR_EVENT), I915_READ_FW(EDP_PSR_DEBUG2));
 
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
 }
@@ -13045,6 +13061,8 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	struct drm_crtc_state *crtc_state = crtc->state;
 	struct i915_vma *old_vma, *vma;
 
+	DRM_DEBUG_KMS("%u %u %u %u\n", src_x, src_y, src_w, src_h);
+
 	/*
 	 * When crtc is inactive or there is a modeset pending,
 	 * wait for it to complete in the slowpath
@@ -13154,6 +13172,8 @@ out_free:
 	return ret;
 
 slow:
+	DRM_DEBUG_KMS("slow path for cursor update -> watermark changes\n");
+
 	return drm_atomic_helper_update_plane(plane, crtc, fb,
 					      crtc_x, crtc_y, crtc_w, crtc_h,
 					      src_x, src_y, src_w, src_h, ctx);
