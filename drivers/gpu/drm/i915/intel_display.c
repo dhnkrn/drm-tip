@@ -2857,6 +2857,9 @@ valid_fb:
 		return;
 	}
 
+	obj = intel_fb_obj(fb);
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	plane_state->src_x = 0;
 	plane_state->src_y = 0;
 	plane_state->src_w = fb->width << 16;
@@ -2870,7 +2873,6 @@ valid_fb:
 	intel_state->base.src = drm_plane_state_src(plane_state);
 	intel_state->base.dst = drm_plane_state_dest(plane_state);
 
-	obj = intel_fb_obj(fb);
 	if (i915_gem_object_is_tiled(obj))
 		dev_priv->preserve_bios_swizzle = true;
 
@@ -12790,6 +12792,8 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	if (ret)
 		return ret;
 
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	if (!new_state->fence) { /* implicit fencing */
 		struct dma_fence *fence;
 
@@ -13183,8 +13187,9 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	if (ret)
 		goto out_unlock;
 
-	old_fb = old_plane_state->fb;
+	intel_fb_obj_flush(intel_fb_obj(fb), ORIGIN_DIRTYFB);
 
+	old_fb = old_plane_state->fb;
 	i915_gem_track_fb(intel_fb_obj(old_fb), intel_fb_obj(fb),
 			  intel_plane->frontbuffer_bit);
 
