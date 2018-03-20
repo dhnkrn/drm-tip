@@ -608,6 +608,7 @@ struct i915_psr {
 	bool colorimetry_support;
 	bool alpm;
 	bool has_hw_tracking;
+	bool debug;
 
 	void (*enable_source)(struct intel_dp *,
 			      const struct intel_crtc_state *);

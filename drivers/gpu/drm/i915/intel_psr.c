@@ -93,6 +93,73 @@ static void psr_aux_io_power_put(struct intel_dp *intel_dp)
 	intel_display_power_put(dev_priv, psr_aux_domain(intel_dp));
 }
 
+void intel_psr_debug_control(struct drm_i915_private *dev_priv, bool enable)
+{
+	u32 transcoders = BIT(TRANSCODER_EDP);
+	u32 mask = 0;
+	enum transcoder cpu_transcoder;
+
+	/* No PSR interrupts on VLV/CHV */
+	if (WARN_ON(!(IS_HASWELL(dev_priv) || INTEL_GEN(dev_priv) >= 8)))
+		return;
+
+	mutex_lock(&dev_priv->psr.lock);
+	if (!dev_priv->psr.enabled) {
+		mutex_unlock(&dev_priv->psr.lock);
+		return;
+	}
+
+	if (INTEL_GEN(dev_priv) >= 8)
+		transcoders |= BIT(TRANSCODER_A) |
+			       BIT(TRANSCODER_B) |
+			       BIT(TRANSCODER_C);
+
+	for_each_cpu_transcoder_masked(dev_priv, cpu_transcoder, transcoders)
+		mask = EDP_PSR_POST_EXIT(cpu_transcoder) |
+		       EDP_PSR_PRE_ENTRY(cpu_transcoder);
+
+	if (enable) {
+		I915_WRITE(EDP_PSR_IMR, ~mask);
+		dev_priv->psr.debug = true;
+	} else {
+		I915_WRITE(EDP_PSR_IMR, mask);
+		dev_priv->psr.debug = false;
+	}
+
+	mutex_unlock(&dev_priv->psr.lock);
+}
+
+void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir)
+{
+	u32 mask = BIT(TRANSCODER_EDP);
+	enum transcoder cpu_transcoder;
+
+	if (!dev_priv->psr.debug)
+		return;
+
+	if (INTEL_GEN(dev_priv) >= 8)
+		mask |= BIT(TRANSCODER_A) |
+			BIT(TRANSCODER_B) |
+			BIT(TRANSCODER_C);
+
+	for_each_cpu_transcoder_masked(dev_priv, cpu_transcoder, mask) {
+		/* FIXME: Exit PSR when this happens. */
+		if (psr_iir & EDP_PSR_ERROR(cpu_transcoder))
+			DRM_DEBUG_KMS("[transcoder %s] PSR error\n",
+				      transcoder_name(cpu_transcoder));
+
+		if (psr_iir & EDP_PSR_PRE_ENTRY(cpu_transcoder)) {
+			DRM_DEBUG_KMS("[transcoder %s] PSR prepare entry in 2 vblanks\n",
+				      transcoder_name(cpu_transcoder));
+		}
+
+		if (psr_iir & EDP_PSR_POST_EXIT(cpu_transcoder)) {
+			DRM_DEBUG_KMS("[transcoder %s] PSR exit completed\n",
+				      transcoder_name(cpu_transcoder));
+		}
+	}
+}
+
 static bool intel_dp_get_y_cord_status(struct intel_dp *intel_dp)
 {
 	uint8_t psr_caps = 0;
@@ -1101,6 +1168,8 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 		DRM_DEBUG_KMS("PSR: Forcing main link off\n");
 		dev_priv->psr.link_standby = false;
 	}
+
+	dev_priv->psr.debug = false;
 
 	INIT_DELAYED_WORK(&dev_priv->psr.work, intel_psr_work);
 	mutex_init(&dev_priv->psr.lock);
