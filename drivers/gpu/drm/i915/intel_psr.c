@@ -156,6 +156,7 @@ void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir)
 		if (psr_iir & EDP_PSR_POST_EXIT(cpu_transcoder)) {
 			DRM_DEBUG_KMS("[transcoder %s] PSR exit completed\n",
 				      transcoder_name(cpu_transcoder));
+			DRM_DEBUG_KMS("%x\n", drm_dp_dpcd_readb());
 		}
 	}
 }
