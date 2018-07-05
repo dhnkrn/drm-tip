@@ -321,7 +321,7 @@ int drm_mode_connector_attach_encoder(struct drm_connector *connector,
 	if (WARN_ON(connector->encoder))
 		return -EINVAL;
 
-	for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++) {
+	for (i = 0; i < ARRAY_SIZE(connector->encoder_ids); i++) {
 		if (connector->encoder_ids[i] == 0) {
 			connector->encoder_ids[i] = encoder->base.id;
 			return 0;
@@ -330,6 +330,29 @@ int drm_mode_connector_attach_encoder(struct drm_connector *connector,
 	return -ENOMEM;
 }
 EXPORT_SYMBOL(drm_mode_connector_attach_encoder);
+
+/**
+ * drm_connector_has_possible_encoder - check if the connector and encoder are assosicated with each other
+ * @connector: the connector
+ * @encoder: the encoder
+ *
+ * Returns:
+ * True if @encoder is one of the possible encoders for @connector.
+ */
+bool drm_connector_has_possible_encoder(struct drm_connector *connector,
+					struct drm_encoder *encoder)
+{
+	struct drm_encoder *enc;
+	int i;
+
+	drm_connector_for_each_possible_encoder(connector, enc, i) {
+		if (enc == encoder)
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL(drm_connector_has_possible_encoder);
 
 static void drm_mode_remove(struct drm_connector *connector,
 			    struct drm_display_mode *mode)
@@ -1033,9 +1056,7 @@ EXPORT_SYMBOL(drm_mode_create_dvi_i_properties);
  *
  *	Drivers can set up this property by calling
  *	drm_connector_attach_content_type_property(). Decoding to
- *	infoframe values is done through
- *	drm_hdmi_get_content_type_from_property() and
- *	drm_hdmi_get_itc_bit_from_property().
+ *	infoframe values is done through drm_hdmi_avi_infoframe_content_type().
  */
 
 /**
@@ -1708,22 +1729,19 @@ int drm_mode_getconnector(struct drm_device *dev, void *data,
 	if (!connector)
 		return -ENOENT;
 
-	for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++)
-		if (connector->encoder_ids[i] != 0)
-			encoders_count++;
+	drm_connector_for_each_possible_encoder(connector, encoder, i)
+		encoders_count++;
 
 	if ((out_resp->count_encoders >= encoders_count) && encoders_count) {
 		copied = 0;
 		encoder_ptr = (uint32_t __user *)(unsigned long)(out_resp->encoders_ptr);
-		for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++) {
-			if (connector->encoder_ids[i] != 0) {
-				if (put_user(connector->encoder_ids[i],
-					     encoder_ptr + copied)) {
-					ret = -EFAULT;
-					goto out;
-				}
-				copied++;
+
+		drm_connector_for_each_possible_encoder(connector, encoder, i) {
+			if (put_user(encoder->base.id, encoder_ptr + copied)) {
+				ret = -EFAULT;
+				goto out;
 			}
+			copied++;
 		}
 	}
 	out_resp->count_encoders = encoders_count;
