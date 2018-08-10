@@ -788,11 +788,15 @@ static void intel_psr_work(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
 		container_of(work, typeof(*dev_priv), psr.work);
+	struct drm_crtc *crtc;
+	crtc = dp_to_dig_port(dev_priv->psr.enabled)->base.base.crtc;
 
 	mutex_lock(&dev_priv->psr.lock);
 
-	if (!dev_priv->psr.enabled)
+	if (!dev_priv->psr.enabled) {
+		drm_crtc_vblank_put(crtc);
 		goto unlock;
+	}
 
 	/*
 	 * We have to make sure PSR is ready for re-enable
@@ -811,7 +815,8 @@ static void intel_psr_work(struct work_struct *work)
 	if (dev_priv->psr.busy_frontbuffer_bits || dev_priv->psr.active)
 		goto unlock;
 
-	intel_psr_activate(dev_priv->psr.enabled);
+	drm_crtc_vblank_put(crtc);
+//	intel_psr_activate(dev_priv->psr.enabled);
 unlock:
 	mutex_unlock(&dev_priv->psr.lock);
 }
@@ -873,7 +878,8 @@ void intel_psr_invalidate(struct drm_i915_private *dev_priv,
 	dev_priv->psr.busy_frontbuffer_bits |= frontbuffer_bits;
 
 	if (frontbuffer_bits)
-		intel_psr_exit(dev_priv);
+		//intel_psr_exit(dev_priv);
+		drm_crtc_vblank_get(crtc);
 
 	mutex_unlock(&dev_priv->psr.lock);
 }
