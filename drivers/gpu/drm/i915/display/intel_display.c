@@ -1912,6 +1912,7 @@ intel_tile_width_bytes(const struct drm_framebuffer *fb, int color_plane)
 			return 128;
 		/* fall through */
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		if (color_plane == 1)
 			return 64;
 		/* fall through */
@@ -2056,6 +2057,7 @@ static unsigned int intel_surf_alignment(const struct drm_framebuffer *fb,
 			return 256 * 1024;
 		return 0;
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		return 16 * 1024;
 	case I915_FORMAT_MOD_Y_TILED_CCS:
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
@@ -2256,8 +2258,15 @@ static u32 intel_adjust_tile_offset(int *x, int *y,
 
 static bool is_surface_linear(u64 modifier, int color_plane)
 {
-	return modifier == DRM_FORMAT_MOD_LINEAR ||
-	       (modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS && color_plane == 1);
+	switch (modifier) {
+	case DRM_FORMAT_MOD_LINEAR:
+		return true;
+	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
+		return color_plane == 1;
+	default:
+		return false;
+	}
 }
 
 static u32 intel_adjust_aligned_offset(int *x, int *y,
@@ -2445,6 +2454,7 @@ static unsigned int intel_fb_modifier_to_tiling(u64 fb_modifier)
 	case I915_FORMAT_MOD_Y_TILED:
 	case I915_FORMAT_MOD_Y_TILED_CCS:
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		return I915_TILING_Y;
 	default:
 		return I915_TILING_NONE;
@@ -2492,6 +2502,14 @@ static const struct drm_format_info gen12_ccs_formats[] = {
 	  .cpp = { 4, 1, }, .hsub = 2, .vsub = 32, .has_alpha = true },
 	{ .format = DRM_FORMAT_ABGR8888, .depth = 32, .num_planes = 2,
 	  .cpp = { 4, 1, }, .hsub = 2, .vsub = 32, .has_alpha = true },
+	{ .format = DRM_FORMAT_YUYV, .depth = 0, .num_planes = 2,
+	  .cpp = { 2, 1, }, .hsub = 4, .vsub = 32, .is_yuv = true },
+	{ .format = DRM_FORMAT_YVYU, .depth = 0, .num_planes = 2,
+	  .cpp = { 2, 1, }, .hsub = 4, .vsub = 32, .is_yuv = true },
+	{ .format = DRM_FORMAT_UYVY, .depth = 0, .num_planes = 2,
+	  .cpp = { 2, 1, }, .hsub = 4, .vsub = 32, .is_yuv = true },
+	{ .format = DRM_FORMAT_VYUY, .depth = 0, .num_planes = 2,
+	  .cpp = { 2, 1, }, .hsub = 4, .vsub = 32, .is_yuv = true },
 };
 
 static const struct drm_format_info *
@@ -2518,6 +2536,7 @@ intel_get_format_info(const struct drm_mode_fb_cmd2 *cmd)
 					  ARRAY_SIZE(skl_ccs_formats),
 					  cmd->pixel_format);
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		return lookup_format_info(gen12_ccs_formats,
 					  ARRAY_SIZE(gen12_ccs_formats),
 					  cmd->pixel_format);
@@ -2529,6 +2548,7 @@ intel_get_format_info(const struct drm_mode_fb_cmd2 *cmd)
 bool is_ccs_modifier(u64 modifier)
 {
 	return modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS ||
 	       modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
 	       modifier == I915_FORMAT_MOD_Yf_TILED_CCS;
 }
@@ -4119,6 +4139,8 @@ static u32 skl_plane_ctl_tiling(u64 fb_modifier)
 		return PLANE_CTL_TILED_Y |
 		       PLANE_CTL_RENDER_DECOMPRESSION_ENABLE |
 		       PLANE_CTL_CLEAR_COLOR_DISABLE;
+	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
+		return PLANE_CTL_TILED_Y | PLANE_CTL_MEDIA_DECOMPRESSION_ENABLE;
 	case I915_FORMAT_MOD_Yf_TILED:
 		return PLANE_CTL_TILED_YF;
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
@@ -9896,6 +9918,8 @@ skylake_get_initial_plane_config(struct intel_crtc *crtc,
 			fb->modifier = INTEL_GEN(dev_priv) >= 12 ?
 				I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS :
 				I915_FORMAT_MOD_Y_TILED_CCS;
+		else if (val & PLANE_CTL_MEDIA_DECOMPRESSION_ENABLE)
+			fb->modifier = I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS;
 		else
 			fb->modifier = I915_FORMAT_MOD_Y_TILED;
 		break;
